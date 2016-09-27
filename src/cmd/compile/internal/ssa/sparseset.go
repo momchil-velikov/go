@@ -62,6 +62,12 @@ func (s *sparseSet) remove(x ID) {
 	}
 }
 
+func (s *sparseSet) removeAll(a []ID) {
+	for _, x := range a {
+		s.remove(x)
+	}
+}
+
 // pop removes an arbitrary element from the set.
 // The set must be nonempty.
 func (s *sparseSet) pop() ID {
@@ -76,4 +82,35 @@ func (s *sparseSet) clear() {
 
 func (s *sparseSet) contents() []ID {
 	return s.dense
+}
+
+func (s *sparseSet) intersect(t *sparseSet) *sparseSet {
+	i := 0
+	for i < len(s.dense) {
+		k := s.dense[i]
+		if t.contains(k) {
+			i++
+			continue
+		}
+		s.remove(k)
+	}
+	return s
+}
+
+func (s *sparseSet) set(t *sparseSet) *sparseSet {
+	s.sparse = append(s.sparse[:0], t.sparse...)
+	s.dense = append(s.dense[:0], t.dense...)
+	return s
+}
+
+func (s *sparseSet) equal(t *sparseSet) bool {
+	if s.size() != t.size() {
+		return false
+	}
+	for _, id := range s.dense {
+		if !t.contains(id) {
+			return false
+		}
+	}
+	return true
 }

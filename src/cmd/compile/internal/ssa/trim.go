@@ -62,7 +62,13 @@ func trim(f *Func) {
 		for _, v := range b.Values {
 			v.Block = s
 		}
-		s.Values = append(b.Values, s.Values...)
+		k := len(b.Values)
+		m := len(s.Values)
+		for i := 0; i < k; i++ {
+			s.Values = append(s.Values, nil)
+		}
+		copy(s.Values[k:], s.Values[:m])
+		copy(s.Values, b.Values)
 	}
 	if n < len(f.Blocks) {
 		f.invalidateCFG()

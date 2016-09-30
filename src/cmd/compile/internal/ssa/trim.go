@@ -123,7 +123,7 @@ func mergePhi(v *Value, i int, b *Block) *Value {
 		// i.e. it does not use a value from the predecessor block,
 		// then the merged phi is
 		//    v = φ(v0, v1, ..., vk, vi, vi, ...)
-		for j := 0; j+1 < len(b.Preds); j++ {
+		for j := 1; j < len(b.Preds); j++ {
 			v.AddArg(v.Args[i])
 		}
 	}

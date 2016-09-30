@@ -93,7 +93,7 @@ func emptyBlock(b *Block) bool {
 //  - it either is the single predecessor of the successor block or
 //    contains no actual instructions
 func trimmableBlock(b *Block) bool {
-	if b.Kind != BlockPlain || len(b.Preds) == 0 {
+	if b.Kind != BlockPlain || b == b.Func.Entry {
 		return false
 	}
 	s := b.Succs[0].b

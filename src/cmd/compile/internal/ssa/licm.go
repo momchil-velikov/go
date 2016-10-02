@@ -7,10 +7,21 @@ func licm(f *Func) {
 	ln.assembleChildren()
 	ln.findExits()
 
+	// Pass statistics.
+	nmove := 0    // number of invariants moved
+	noprehdr := 0 // number of loops with no pre-header
+
 	for _, lp := range ln.loops {
 		if lp.outer == nil {
-			moveInvariants(ln, lp)
+			n, h := moveInvariants(ln, lp)
+			nmove += n
+			noprehdr += h
 		}
+	}
+
+	if f.pass.stats > 0 {
+		f.LogStat("LICM MOVES", nmove)
+		f.LogStat("LICM NOPREHDR", noprehdr)
 	}
 
 	copyelim(f)
@@ -29,11 +40,13 @@ func isNestedLoop(inner, outer *loop) bool {
 // - false: loop dependent
 type invmap map[ID]bool
 
-func moveInvariants(ln *loopnest, lp *loop) {
+func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 	if !lp.isInner {
 		// First move invariants out of the inner loops.
 		for _, c := range lp.children {
-			moveInvariants(ln, c)
+			n, h := moveInvariants(ln, c)
+			nmove += n
+			nohdr += h
 		}
 	}
 
@@ -48,7 +61,18 @@ func moveInvariants(ln *loopnest, lp *loop) {
 		}
 	}
 
-	// TODO(chill):Create a pre-header.
+	if ln.f.pass.debug > 1 {
+		fmt.Printf("loop %s invariants:", lp.header)
+		for id, isInv := range inv {
+			if isInv {
+				fmt.Printf(" v%d", id)
+			}
+		}
+		fmt.Println()
+	}
+
+	// Find the pre-header. It's the only edge, coming from a block, not
+	// dominated by the loop header, i.e. not in the loop.
 	var pre *Block
 	sdom := ln.f.sdom()
 	for _, e := range lp.header.Preds {
@@ -62,36 +86,32 @@ func moveInvariants(ln *loopnest, lp *loop) {
 		pre = e.b
 	}
 
-	if pre != nil {
-		// Move invariants to the pre-header.
-		for _, b := range ln.f.Blocks {
-			if ln.b2l[b.ID] != lp {
-				continue
-			}
-			for _, v := range b.Values {
-				isInv, ok := inv[v.ID]
-				if !ok {
-					ln.f.Fatalf("unknown invariance status for %s", v)
-				}
-				if !isInv {
-					continue
-				}
-				c := v.copyInto(pre)
-				v.reset(OpCopy)
-				v.AddArg(c)
-			}
-		}
+	// Check we in fact have a pre-header ...
+	if pre == nil {
+		nohdr++
+		return
 	}
 
-	if ln.f.pass.debug > 1 {
-		fmt.Printf("loop %s invariants:", lp.header)
-		for id, isInv := range inv {
-			if isInv {
-				fmt.Printf(" v%d", id)
-			}
+	// ... and move the invariants there.
+	for _, b := range ln.f.Blocks {
+		if ln.b2l[b.ID] != lp {
+			continue
 		}
-		fmt.Println()
+		for _, v := range b.Values {
+			isInv, ok := inv[v.ID]
+			if !ok {
+				ln.f.Fatalf("unknown invariance status for %s", v)
+			}
+			if !isInv {
+				continue
+			}
+			c := v.copyInto(pre)
+			v.reset(OpCopy)
+			v.AddArg(c)
+			nmove++
+		}
 	}
+	return
 }
 
 func canHoistValue(v *Value) bool {

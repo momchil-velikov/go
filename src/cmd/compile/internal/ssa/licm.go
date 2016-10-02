@@ -35,7 +35,6 @@ func moveInvariants(ln *loopnest, lp *loop) {
 		for _, c := range lp.children {
 			moveInvariants(ln, c)
 		}
-		return
 	}
 
 	// Determine invariance of each definition in the loop.
@@ -124,9 +123,10 @@ func checkInvariant(ln *loopnest, lp *loop, v *Value, inv invmap) bool {
 		return isInv
 	}
 
-	// If the Value is defined outside the loop, it's invariant.
+	// If the Value is defined outside the loop it is invariant iff it
+	// dominates the loop header.
 	if ln.b2l[v.Block.ID] != lp {
-		return true
+		return sdom.isAncestor(v.Block, lp.header)
 	}
 
 	// Certain operations are never moved and the corresponding values

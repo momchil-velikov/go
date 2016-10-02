@@ -1,17 +1,40 @@
-## The Go Programming Language
+## Loop Inversion
 
-This repository contains experimental/unstable changes to the Go
-compiler SSA backend
+Loop Inversion enables Loop Invariant Code Motion to hoist more
+invariants outside loops.
 
-(original [README.md](https://github.com/momchil-velikov/go/blob/master/README.md))
-### Development branches
-
-* dev.chill: This README.md
-* dev.chill.trim: improvements the the basic block trimming pass ([README.md](https://github.com/momchil-velikov/go/blob/dev.chill.trim/README.md))
-  - merged upstream [be302e6](https://github.com/golang/go/commit/be302e6d43790c3398e5b03c955f257868855a80)
-* dev.chill.gvn-hoist: GVN code hoisting pass ([README.md](https://github.com/momchil-velikov/go/blob/dev.chill.gvn-hoist/README.md)) 
-* dev.chill.licm: Loop Invariant Code Motion pass ([README.md](https://github.com/momchil-velikov/go/blob/dev.chill.licm/README.md)) 
-* dev.chill.loop-inv: Loop Inversion ([README.md](https://github.com/momchil-velikov/go/blob/dev.chill.loop-inv/README.md))
-* dev.chill.sccp: Sparse Conditional Constant Propagation pass ([README.md](https://github.com/momchil-velikov/go/blob/dev.chill.sccp/README.md))
-
-Note that the `dev.chill.*` branches are often rebased onto `master`.
+For a for loop
+    
+      for init; cond; inc {
+          body
+      }
+    
+the Go compiler generates
+    
+      <init>
+      goto C
+    B:
+      <body>
+      <inc>
+    C:
+      if <cond> goto B
+    
+In this form of loop translation, however, moving invariant expressions
+outside of the loop is problematic as there isn't really a point, where
+to place them, while making sure they aren't executed if the loop body
+is never entered. Only invariants, which can be speculatively executed,
+or invariants occuring in `<cond>`, can be placed right in front of the
+initial jump to the loop condition.
+    
+If, instead, the loop is translated like
+    
+      <init>
+      if !<cond> goto E
+    B:
+      <body>
+      <inc>
+     if <cond> goto B
+    E:
+    
+loop invariants can be safely moved before the label `B`. The drawback
+is that the code for evaluatung the condition is emitted twice.

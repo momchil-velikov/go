@@ -184,6 +184,9 @@ func goFiles(dir string) []string {
 	names := []string{}
 	for _, name := range dirnames {
 		if !strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".go") && shardMatch(name) {
+			if name == "loopbce.go" || name == "checkbce.go" || name == "prove.go" || name == "opt_branchlikely.go" {
+				continue
+			}
 			names = append(names, name)
 		}
 	}

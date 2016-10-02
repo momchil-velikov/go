@@ -79,6 +79,7 @@ const (
 	isClosureVar
 	isOutputParamHeapAddr
 	noInline // used internally by inliner to indicate that a function call should not be inlined; set for OCALLFUNC and OCALLMETH only
+	autoLabel
 )
 
 func (n *Node) HasBreak() bool {
@@ -109,6 +110,16 @@ func (n *Node) setNoInline(b bool) {
 		n.flags |= noInline
 	} else {
 		n.flags &^= noInline
+	}
+}
+func (n *Node) autoLabel() bool {
+	return n.flags&autoLabel != 0
+}
+func (n *Node) setAutoLabel(b bool) {
+	if b {
+		n.flags |= autoLabel
+	} else {
+		n.flags &^= autoLabel
 	}
 }
 

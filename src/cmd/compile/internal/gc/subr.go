@@ -262,7 +262,9 @@ func autolabel(prefix string) *Node {
 	}
 	n := fn.Func.Label
 	fn.Func.Label++
-	return newname(lookupN(prefix, int(n)))
+	np := newname(lookupN(prefix, int(n)))
+	np.setAutoLabel(true)
+	return np
 }
 
 var initSyms []*Sym

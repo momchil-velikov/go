@@ -155,6 +155,9 @@ func buildssa(fn *Node) *ssa.Func {
 
 	// Check any forward gotos. Non-forward gotos have already been checked.
 	for _, n := range s.fwdGotos {
+		if n.Left.autoLabel() {
+			continue
+		}
 		lab := s.labels[n.Left.Sym.Name]
 		// If the label is undefined, we have already have printed an error.
 		if lab.defined() {
@@ -242,6 +245,8 @@ type state struct {
 	cgoUnsafeArgs bool
 	noWB          bool
 	WBLineno      int32 // line number of first write barrier. 0=no write barriers
+
+	autoLabel int
 }
 
 type funcLine struct {
@@ -268,11 +273,17 @@ func (l *ssaLabel) defined() bool { return l.defNode != nil }
 func (l *ssaLabel) used() bool { return l.useNode != nil }
 
 // label returns the label associated with sym, creating it if necessary.
-func (s *state) label(sym *Sym) *ssaLabel {
-	lab := s.labels[sym.Name]
+func (s *state) label(n *Node) *ssaLabel {
+	var name string
+	if n.autoLabel() {
+		name = fmt.Sprintf("%s·%d", n.Sym.Name, s.autoLabel)
+	} else {
+		name = n.Sym.Name
+	}
+	lab := s.labels[name]
 	if lab == nil {
 		lab = new(ssaLabel)
-		s.labels[sym.Name] = lab
+		s.labels[name] = lab
 	}
 	return lab
 }
@@ -575,7 +586,7 @@ func (s *state) stmt(n *Node) {
 			return
 		}
 
-		lab := s.label(sym)
+		lab := s.label(n.Left)
 
 		// Associate label with its control flow node, if any
 		if ctl := n.Name.Defn; ctl != nil {
@@ -602,9 +613,8 @@ func (s *state) stmt(n *Node) {
 		s.startBlock(lab.target)
 
 	case OGOTO:
-		sym := n.Left.Sym
+		lab := s.label(n.Left)
 
-		lab := s.label(sym)
 		if lab.target == nil {
 			lab.target = s.f.NewBlock(ssa.BlockPlain)
 		}
@@ -791,7 +801,7 @@ func (s *state) stmt(n *Node) {
 		} else {
 			// labeled break/continue; look up the target
 			sym := n.Left.Sym
-			lab := s.label(sym)
+			lab := s.label(n.Left)
 			if !lab.used() {
 				lab.useNode = n.Left
 			}
@@ -824,24 +834,29 @@ func (s *state) stmt(n *Node) {
 
 	case OFOR:
 		// OFOR: for Ninit; Left; Right { Nbody }
-		bCond := s.f.NewBlock(ssa.BlockPlain)
+		bCond0 := s.f.NewBlock(ssa.BlockPlain)
+		bInv := s.f.NewBlock(ssa.BlockPlain)
 		bBody := s.f.NewBlock(ssa.BlockPlain)
 		bIncr := s.f.NewBlock(ssa.BlockPlain)
+		bCond := s.f.NewBlock(ssa.BlockPlain)
 		bEnd := s.f.NewBlock(ssa.BlockPlain)
 
-		// first, jump to condition test
+		// generate code for outer condition
 		b := s.endBlock()
-		b.AddEdgeTo(bCond)
-
-		// generate code to test condition
-		s.startBlock(bCond)
+		b.AddEdgeTo(bCond0)
+		s.startBlock(bCond0)
 		if n.Left != nil {
-			s.condBranch(n.Left, bBody, bEnd, 1)
+			s.condBranch(n.Left, bInv, bEnd, 1)
 		} else {
 			b := s.endBlock()
 			b.Kind = ssa.BlockPlain
-			b.AddEdgeTo(bBody)
+			b.AddEdgeTo(bInv)
 		}
+
+		// connect invariants block to body
+		s.startBlock(bInv)
+		b = s.endBlock()
+		b.AddEdgeTo(bBody)
 
 		// set up for continue/break in body
 		prevContinue := s.continueTo
@@ -880,6 +895,19 @@ func (s *state) stmt(n *Node) {
 		if b := s.endBlock(); b != nil {
 			b.AddEdgeTo(bCond)
 		}
+
+		// generate code to test condition
+		s.startBlock(bCond)
+		if n.Left != nil {
+			s.autoLabel++
+			s.condBranch(n.Left, bBody, bEnd, 1)
+			s.autoLabel--
+		} else {
+			b := s.endBlock()
+			b.Kind = ssa.BlockPlain
+			b.AddEdgeTo(bBody)
+		}
+
 		s.startBlock(bEnd)
 
 	case OSWITCH, OSELECT:

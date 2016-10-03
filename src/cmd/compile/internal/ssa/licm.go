@@ -50,6 +50,27 @@ func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 		}
 	}
 
+	// Find the pre-header. It's the only edge, coming from a block, not
+	// dominated by the loop header, i.e. not in the loop.
+	var pre *Block
+	sdom := ln.f.sdom()
+	for _, e := range lp.header.Preds {
+		if sdom.isAncestorEq(lp.header, e.b) {
+			continue
+		}
+		if pre != nil {
+			pre = nil
+			break
+		}
+		pre = e.b
+	}
+
+	// Check we in fact have a pre-header.
+	if pre == nil {
+		nohdr++
+		return
+	}
+
 	// Determine invariance of each definition in the loop.
 	inv := make(invmap)
 	for _, b := range ln.f.Blocks {
@@ -71,28 +92,7 @@ func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 		fmt.Println()
 	}
 
-	// Find the pre-header. It's the only edge, coming from a block, not
-	// dominated by the loop header, i.e. not in the loop.
-	var pre *Block
-	sdom := ln.f.sdom()
-	for _, e := range lp.header.Preds {
-		if sdom.isAncestorEq(lp.header, e.b) {
-			continue
-		}
-		if pre != nil {
-			pre = nil
-			break
-		}
-		pre = e.b
-	}
-
-	// Check we in fact have a pre-header ...
-	if pre == nil {
-		nohdr++
-		return
-	}
-
-	// ... and move the invariants there.
+	// Move the invariants to the pre-header.
 	for _, b := range ln.f.Blocks {
 		if ln.b2l[b.ID] != lp {
 			continue

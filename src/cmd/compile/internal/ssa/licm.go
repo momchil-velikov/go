@@ -23,8 +23,6 @@ func licm(f *Func) {
 		f.LogStat("LICM MOVES", nmove)
 		f.LogStat("LICM NOPREHDR", noprehdr)
 	}
-
-	copyelim(f)
 }
 
 func isNestedLoop(inner, outer *loop) bool {
@@ -97,19 +95,22 @@ func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 		if ln.b2l[b.ID] != lp {
 			continue
 		}
+		n := 0
 		for _, v := range b.Values {
 			isInv, ok := inv[v.ID]
 			if !ok {
 				ln.f.Fatalf("unknown invariance status for %s", v)
 			}
 			if !isInv {
+				b.Values[n] = v
+				n++
 				continue
 			}
-			c := v.copyInto(pre)
-			v.reset(OpCopy)
-			v.AddArg(c)
+			pre.Values = append(pre.Values, v)
+			v.Block = pre
 			nmove++
 		}
+		b.Values = b.Values[:n]
 	}
 	return
 }

@@ -159,6 +159,7 @@ func f4(x *[10]int) {
 		if x[9] != 0 { // ERROR "removed nil check"
 			break
 		}
+		_ = fx10() // get a Phi<mem> in the loop, so the nil check is not hoisted
 	}
 
 	x = fx10()

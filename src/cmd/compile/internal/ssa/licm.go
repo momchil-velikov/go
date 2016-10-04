@@ -120,12 +120,6 @@ func canHoistValue(v *Value) bool {
 	if v.Op == OpPhi {
 		return false
 	}
-	// Do not hoist values with memory args.
-	for _, a := range v.Args {
-		if a.Type.IsMemory() {
-			return false
-		}
-	}
 	// Do not hoist control values. They are always live and the
 	// compiler may put the original value back, in effect increasing
 	// code size and execution time.

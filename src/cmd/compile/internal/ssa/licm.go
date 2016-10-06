@@ -48,6 +48,13 @@ func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 		}
 	}
 
+	// If the loop contains calls, moving an invariant outside the loop
+	// would likely increase spills. FIXME: need to weigh the cost of
+	// spill/reload against the cost of evaluating some big invariant.
+	if lp.containsCall {
+		return
+	}
+
 	// Find the pre-header. It's the only edge, coming from a block, not
 	// dominated by the loop header, i.e. not in the loop.
 	var pre *Block

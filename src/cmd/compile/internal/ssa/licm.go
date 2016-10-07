@@ -320,9 +320,19 @@ func init() {
 // specExecSafe returns true if `op` can be safely executed by the
 // optimized program, even though it may not be executed in the original
 // program at all.
-func specExecSafe(op Op) bool {
-	_, ok := specSafe[op]
-	return ok
+func specExecSafe(v *Value) bool {
+	if _, ok := specSafe[v.Op]; ok {
+		return true
+	}
+
+	// Allow division and modulo operations with constant non-zero
+	// divisors.
+	if v.Op == OpDiv32F || v.Op == OpDiv64F || OpDiv8 <= v.Op && v.Op <= OpDiv64u || OpMod8 <= v.Op && v.Op <= OpMod64u {
+		a := v.Args[1]
+		return OpConst8 <= a.Op && a.Op <= OpConst64F && a.AuxInt == 0
+	}
+
+	return false
 }
 
 func checkInvariant(ln *loopnest, lp *loop, v *Value, inv invmap) bool {
@@ -358,7 +368,7 @@ func checkInvariant(ln *loopnest, lp *loop, v *Value, inv invmap) bool {
 	}
 
 	// Some operations are safe to execute speculatively.
-	if specExecSafe(v.Op) {
+	if specExecSafe(v) {
 		goto invariant
 	}
 

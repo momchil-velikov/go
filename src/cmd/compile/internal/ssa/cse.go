@@ -79,7 +79,7 @@ func cse(f *Func) {
 			valueEqClass[v.ID] = -v.ID
 		}
 	}
-	var pNum ID = 1
+	var pNum ID = 0
 	for _, e := range partition {
 		for _, v := range e {
 			valueEqClass[v.ID] = pNum
@@ -122,14 +122,16 @@ func cse(f *Func) {
 				continue // no splits, leave equivalence class alone.
 			}
 
-			// Move another equivalence class down in place of e.
-			partition[i] = partition[len(partition)-1]
-			partition = partition[:len(partition)-1]
+			partition[i] = e[splitPoints[0]:splitPoints[1]]
+			if len(partition[i]) == 1 {
+				v := partition[i][0]
+				valueEqClass[v.ID] = -v.ID
+			}
 			i--
 
 			// Add new equivalence classes for the parts of e we found.
 			splitPoints = append(splitPoints, len(e))
-			for j := 0; j < len(splitPoints)-1; j++ {
+			for j := 1; j < len(splitPoints)-1; j++ {
 				f := e[splitPoints[j]:splitPoints[j+1]]
 				if len(f) == 1 {
 					// Don't add singletons.
@@ -383,7 +385,7 @@ func (sv partitionByDom) Less(i, j int) bool {
 
 type partitionByArgClass struct {
 	a       []*Value // array of values
-	eqClass []ID     // equivalence class IDs of values
+	eqClass map[ID]ID     // equivalence class IDs of values
 }
 
 func (sv partitionByArgClass) Len() int      { return len(sv.a) }

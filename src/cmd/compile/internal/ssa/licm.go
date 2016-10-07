@@ -130,10 +130,19 @@ func canHoistValue(v *Value) bool {
 	// Do not hoist control values. They are always live and the
 	// compiler may put the original value back, in effect increasing
 	// code size and execution time.
-	// FIXME(chill): check this
 	if v == v.Block.Control {
 		return false
 	}
+
+	// Do not hoist operations, which modify memory. If there are memory
+	// writes in the loop, the loop would contain a `Phi<mem>` in the
+	// header and this operation will depend (transitively) on it.  The
+	// check here, while not strictly necessary, is a shortcut
+	// alternative to following the use-def chain up to that `Phi<mem>`.
+	if v.Type.IsMemory() {
+		return false
+	}
+
 	return true
 }
 

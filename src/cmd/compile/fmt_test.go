@@ -614,6 +614,8 @@ var knownFormats = map[string]string{
 	"cmd/compile/internal/ssa.Edge %v":                "",
 	"cmd/compile/internal/ssa.GCNode %s":              "",
 	"cmd/compile/internal/ssa.ID %d":                  "",
+	"cmd/compile/internal/ssa.latticeKind %s":         "",
+	"cmd/compile/internal/ssa.latticeValue %s":        "",
 	"cmd/compile/internal/ssa.LocalSlot %s":           "",
 	"cmd/compile/internal/ssa.Location %v":            "",
 	"cmd/compile/internal/ssa.Op %s":                  "",

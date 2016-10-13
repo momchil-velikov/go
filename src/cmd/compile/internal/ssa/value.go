@@ -119,13 +119,13 @@ func (v *Value) auxString() string {
 			return " [true]"
 		}
 	case auxInt8:
-		return fmt.Sprintf(" [%d]", v.AuxInt8())
+		return fmt.Sprintf(" [%d,%x]", v.AuxInt8(), uint64(v.AuxInt))
 	case auxInt16:
-		return fmt.Sprintf(" [%d]", v.AuxInt16())
+		return fmt.Sprintf(" [%d,%x]", v.AuxInt16(), uint64(v.AuxInt))
 	case auxInt32:
-		return fmt.Sprintf(" [%d]", v.AuxInt32())
+		return fmt.Sprintf(" [%d,%x]", v.AuxInt32(), uint64(v.AuxInt))
 	case auxInt64, auxInt128:
-		return fmt.Sprintf(" [%d]", v.AuxInt)
+		return fmt.Sprintf(" [%d,%x]", v.AuxInt, uint64(v.AuxInt))
 	case auxSizeAndAlign:
 		return fmt.Sprintf(" [%s]", SizeAndAlign(v.AuxInt))
 	case auxFloat32, auxFloat64:

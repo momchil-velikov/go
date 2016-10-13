@@ -650,6 +650,18 @@ func foldZeroExt32(a []int64) int64 {
 	return int64(uint32(a[0]))
 }
 
+func foldTruncTo8(a []int64) int64 {
+	return int64(int8(a[0]))
+}
+
+func foldTruncTo16(a []int64) int64 {
+	return int64(int16(a[0]))
+}
+
+func foldTruncTo32(a []int64) int64 {
+	return int64(int32(a[0]))
+}
+
 func foldCvt32to32F(a []int64) int64 {
 	return f32i(float32(int32(a[0])))
 }
@@ -895,18 +907,20 @@ var foldMap = map[Op]foldFn{
 	OpSignExt16to32: {fn: foldSignExt16},
 	OpSignExt16to64: {fn: foldSignExt16},
 	OpSignExt32to64: {fn: foldSignExt32},
+
 	OpZeroExt8to16:  {fn: foldZeroExt8},
 	OpZeroExt8to32:  {fn: foldZeroExt8},
 	OpZeroExt8to64:  {fn: foldZeroExt8},
 	OpZeroExt16to32: {fn: foldZeroExt16},
 	OpZeroExt16to64: {fn: foldZeroExt16},
 	OpZeroExt32to64: {fn: foldZeroExt32},
-	OpTrunc16to8:    {fn: foldCopy}, // XXX
-	OpTrunc32to8:    {fn: foldCopy},
-	OpTrunc32to16:   {fn: foldCopy},
-	OpTrunc64to8:    {fn: foldCopy},
-	OpTrunc64to16:   {fn: foldCopy},
-	OpTrunc64to32:   {fn: foldCopy},
+
+	OpTrunc16to8:  {fn: foldTruncTo8},
+	OpTrunc32to8:  {fn: foldTruncTo8},
+	OpTrunc64to8:  {fn: foldTruncTo8},
+	OpTrunc32to16: {fn: foldTruncTo16},
+	OpTrunc64to16: {fn: foldTruncTo16},
+	OpTrunc64to32: {fn: foldTruncTo32},
 
 	OpCvt32to32F: {fn: foldCvt32to32F},
 	OpCvt32to64F: {fn: foldCvt32to64F},
@@ -949,7 +963,6 @@ var foldMap = map[Op]foldFn{
 
 	OpCvt32Uto32F: {fn: foldCvt32Uto32F},
 	OpCvt32Uto64F: {fn: foldCvt32Uto64F},
-
 	OpCvt32Fto32U: {fn: foldCvt32Fto32U},
 	OpCvt64Fto32U: {fn: foldCvt64Fto32U},
 	OpCvt64Uto32F: {fn: foldCvt64Uto32F},

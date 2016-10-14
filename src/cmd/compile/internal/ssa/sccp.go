@@ -47,7 +47,7 @@ type sccpState struct {
 	cells    []latticeCell
 	exec     map[Edge]bool
 	flowlist []Edge
-	ssalist  []*Value
+	ssalist  *sparseSet
 }
 
 func sccp(f *Func) {
@@ -56,9 +56,10 @@ func sccp(f *Func) {
 	}
 
 	s := sccpState{
-		f:     f,
-		cells: make([]latticeCell, f.NumValues()),
-		exec:  make(map[Edge]bool),
+		f:       f,
+		cells:   make([]latticeCell, f.NumValues()),
+		exec:    make(map[Edge]bool),
+		ssalist: newSparseSet(f.NumValues()),
 	}
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
@@ -73,7 +74,7 @@ func sccp(f *Func) {
 	}
 
 	s.visitExprs(f.Entry)
-	for len(s.flowlist) > 0 || len(s.ssalist) > 0 {
+	for len(s.flowlist) > 0 || s.ssalist.size() > 0 {
 		switch {
 		case len(s.flowlist) > 0:
 			e := s.flowlist[len(s.flowlist)-1]
@@ -92,9 +93,8 @@ func sccp(f *Func) {
 			}
 			s.visitExprs(e.b)
 
-		case len(s.ssalist) > 0:
-			v := s.ssalist[len(s.ssalist)-1]
-			s.ssalist = s.ssalist[:len(s.ssalist)-1]
+		case s.ssalist.size() > 0:
+			v := s.cells[s.ssalist.pop()].v
 
 			tmp := [4]bool{}
 			x, n := s.execEdges(v.Block, tmp[:0])
@@ -288,7 +288,9 @@ func (s *sccpState) visitExpr(v *Value) {
 }
 
 func (s *sccpState) propagate(v *Value) {
-	s.ssalist = append(s.ssalist, s.cells[v.ID].use...)
+	for _, u := range s.cells[v.ID].use {
+		s.ssalist.add(u.ID)
+	}
 	for _, b := range s.cells[v.ID].ctl {
 		if lv := s.cells[v.ID].lv; lv.kind == latticeBottom {
 			s.flowlist = append(s.flowlist, b.Succs...)

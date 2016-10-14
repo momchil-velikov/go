@@ -245,6 +245,8 @@ func (s *sccpState) visitExpr(v *Value) {
 	new := latticeValue{}
 	if isConst(v.Op) {
 		new = latticeValue{kind: latticeConst, bits: v.AuxInt}
+	} else if t, ok := foldMap[v.Op]; !ok {
+		new.kind = latticeBottom
 	} else {
 		tmpKind := [2]latticeKind{}
 		tmpArgs := [2]int64{}
@@ -261,19 +263,15 @@ func (s *sccpState) visitExpr(v *Value) {
 				nbot++
 			}
 		}
-		if t, ok := foldMap[v.Op]; ok {
-			if t.genFn == nil {
-				if nbot > 0 {
-					new.kind = latticeBottom
-				} else if ntop == 0 {
-					new.kind = latticeConst
-					new.bits = t.fn(args)
-				}
-			} else {
-				new = t.genFn(kinds, args)
+		if t.genFn == nil {
+			if nbot > 0 {
+				new.kind = latticeBottom
+			} else if ntop == 0 {
+				new.kind = latticeConst
+				new.bits = t.fn(args)
 			}
 		} else {
-			new.kind = latticeBottom
+			new = t.genFn(kinds, args)
 		}
 	}
 

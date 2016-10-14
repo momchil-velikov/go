@@ -111,11 +111,11 @@ func f3(x *[10000]int) {
 
 	x = fx10k()
 	if b {
-		_ = x[9999] // ERROR "generated nil check"
+		_ = x[9999]
 	} else {
 		_ = x[9999] // ERROR "generated nil check"
 	}
-	_ = x[9999] // ERROR "generated nil check"
+	_ = x[9999]
 
 	fx10k()
 	// This one is a bit redundant, if we figured out that
@@ -172,11 +172,11 @@ func f4(x *[10]int) {
 
 	x = fx10()
 	if b {
-		_ = x[9] // ERROR "generated nil check"  // bug would like to remove before indirect
+		_ = x[9]
 	} else {
 		_ = &x[9] // ERROR "generated nil check"
 	}
-	_ = x[9] // ERROR "generated nil check"  // bug would like to remove before indirect
+	_ = x[9]
 
 	fx10()
 	_ = x[9] // ERROR "removed nil check"

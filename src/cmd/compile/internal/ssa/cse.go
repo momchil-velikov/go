@@ -384,8 +384,8 @@ func (sv partitionByDom) Less(i, j int) bool {
 }
 
 type partitionByArgClass struct {
-	a       []*Value // array of values
-	eqClass map[ID]ID     // equivalence class IDs of values
+	a       []*Value  // array of values
+	eqClass map[ID]ID // equivalence class IDs of values
 }
 
 func (sv partitionByArgClass) Len() int      { return len(sv.a) }
@@ -450,12 +450,9 @@ func canHoistValue(v *Value) bool {
 	if v.Type.IsTuple() {
 		return false
 	}
-	// Do not hoist values with memory args.  TODO: hoist values with
-	// memory args.
-	for _, a := range v.Args {
-		if a.Type.IsMemory() {
-			return false
-		}
+	// Do not hoist memory modifying operations.
+	if v.Type.IsMemory() {
+		return false
 	}
 	// Do not hoist control values. They are always live and the
 	// compiler may put the original value back, in effect increasing
@@ -713,8 +710,12 @@ func (s *hoistState) hoistClass(classID ID) int64 {
 		}
 		// Replace the hoisted values with copy ops.
 		for _, u := range dst[i].vs {
-			u.reset(OpCopy)
-			u.AddArg(c)
+			if u.Type.IsVoid() {
+				u.reset(OpInvalid)
+			} else {
+				u.reset(OpCopy)
+				u.AddArg(c)
+			}
 		}
 		// Mark the equivalence class as hoisted.
 		hoists += int64(len(dst[i].vs))

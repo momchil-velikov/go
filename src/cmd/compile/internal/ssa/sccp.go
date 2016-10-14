@@ -288,9 +288,7 @@ func (s *sccpState) visitExpr(v *Value) {
 }
 
 func (s *sccpState) propagate(v *Value) {
-	for _, u := range s.cells[v.ID].use {
-		s.ssalist = append(s.ssalist, u)
-	}
+	s.ssalist = append(s.ssalist, s.cells[v.ID].use...)
 	for _, b := range s.cells[v.ID].ctl {
 		if lv := s.cells[v.ID].lv; lv.kind == latticeBottom {
 			s.flowlist = append(s.flowlist, b.Succs...)

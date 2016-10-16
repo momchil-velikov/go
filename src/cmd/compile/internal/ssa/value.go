@@ -97,6 +97,9 @@ func (v *Value) AuxValAndOff() ValAndOff {
 
 // long form print.  v# = opcode <type> [aux] args [: reg]
 func (v *Value) LongString() string {
+	if v == nil {
+		return "nil" // should never happen, but not panicking helps with debugging
+	}
 	s := fmt.Sprintf("v%d = %s", v.ID, v.Op)
 	s += " <" + v.Type.String() + ">"
 	s += v.auxString()

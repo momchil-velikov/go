@@ -415,7 +415,7 @@ type hoistState struct {
 	fn           *Func
 	partition    []eqclass
 	valueEqClass map[ID]ID
-	antOut       []*sparseSet
+	antIn        []*sparseSet
 	done         map[ID]struct{}
 }
 
@@ -476,11 +476,11 @@ func (s *hoistState) hoistPlan(classID ID) []hoistDst {
 			continue
 		}
 		d := v.Block.Preds[0].b
-		if s.antOut[d.ID].contains(classID) {
+		if s.antIn[d.ID].contains(classID) {
 			ds = addHoistCandidate(s.fn, ds, d)
 		}
 		// d := idom[v.Block.ID]
-		// if d != nil && s.antOut[d.ID].contains(classID) {
+		// if d != nil && s.antIn[d.ID].contains(classID) {
 		// 	ds = addHoistCandidate(s.fn, ds, d)
 		// }
 	}
@@ -504,55 +504,51 @@ func (s *hoistState) hoistPlan(classID ID) []hoistDst {
 	return ds
 }
 
-// anticipatedExprs computes at each block exit the set of expressions,
-// evaluated on each path, which starts from the point after the block.
-// Each expression is represented by the equivalence class ID of the
-// expression's Value. Unlike the classical anticipated/very busy
-// expressions analysis, we are not concerned with the availability of
-// the operands at this point as the availability may change as a result
-// of our own transformations.
+// anticipatedExprs computes at each block the set of expressions,
+// evaluated on each path, which starts from the point immediately
+// preceding the block.  Each expression is represented by the
+// equivalence class ID of the expression's Value. Unlike the classical
+// anticipated/very busy expressions analysis, we are not concerned with
+// the availability of the operands at this point as the availability
+// may change as a result of our own transformations.
 func anticipatedExprs(f *Func, partition []eqclass, valueEqClass map[ID]ID) []*sparseSet {
 	// Map from block IDs to sets of anticipated expressions.
-	antOut := make([]*sparseSet, f.NumBlocks())
 	antIn := make([]*sparseSet, f.NumBlocks())
 	nEqClass := len(partition)
-	for i := range antOut {
+	for i := range antIn {
 		antIn[i] = newSparseSet(nEqClass)
-		antOut[i] = newSparseSet(nEqClass)
 	}
 	// Temporary buffer for removing elements from a set.
 	post := postorder(f)
+	out := newSparseSet(nEqClass)
 	for {
 		change := false
 		// It's a backward dataflow analysis, hence traverse the blocks
 		// in postorder.
 		for _, b := range post {
-			// fmt.Println("DBG: begin block", b)
-			// Evaluate antOut for the current block as the
-			// intersection of antIn's of the successor blocks.
-			if len(b.Succs) == 0 {
-				antOut[b.ID].clear()
-			} else {
-				antOut[b.ID].set(antIn[b.Succs[0].b.ID])
+			// Evaliate anticipated expression at the exit of the
+			// current block as the intersection of the sets of
+			// anticipated expressions at the entries of the successor
+			// blocks.
+			out.clear()
+			if len(b.Succs) > 0 {
+				out.set(antIn[b.Succs[0].b.ID])
 				for i := 1; i < len(b.Succs); i++ {
-					antOut[b.ID].intersect(antIn[b.Succs[i].b.ID])
+					out.intersect(antIn[b.Succs[i].b.ID])
 				}
 			}
-			// Copy antOut and propagate it backwards to the beginning
-			// of the block, where it will become the antIn for the
-			// block.
-			s := new(sparseSet).set(antOut[b.ID])
 			// Add all the expressions, computed in the block, to the
 			// set, except the ones, which are alone in their
-			// equivalence class, as we won't move them anyway.
+			// equivalence class, as we won't move them anyway. Thus
+			// `out`, becomes `in`.
 			for _, v := range b.Values {
 				if id := valueEqClass[v.ID]; id >= 0 && len(partition[id]) > 1 {
-					s.add(id)
+					out.add(id)
 				}
 			}
 
-			if !s.equal(antIn[b.ID]) {
-				antIn[b.ID].set(s)
+			if !out.equal(antIn[b.ID]) {
+				antIn[b.ID].set(out)
 				change = true
 			}
 		}
@@ -561,40 +557,28 @@ func anticipatedExprs(f *Func, partition []eqclass, valueEqClass map[ID]ID) []*s
 		}
 	}
 
-	if f.pass.debug > 1 {
+	if f.pass.debug > 2 {
 		fmt.Println("CSE anticipated expressions")
 		for _, b := range post {
-			if f.pass.debug > 2 {
-				if antIn[b.ID].size() > 0 {
-					fmt.Printf(" IN(b%d): [", b.ID)
-					for _, id := range antIn[b.ID].contents() {
-						rep := partition[id][0]
-						fmt.Printf(" %s", rep)
-					}
-					fmt.Println(" ]")
-				}
+			fmt.Printf(" IN(b%d): [", b.ID)
+			for _, id := range antIn[b.ID].contents() {
+				rep := partition[id][0]
+				fmt.Printf(" %s", rep)
 			}
-			if antOut[b.ID].size() > 0 {
-				fmt.Printf("OUT(b%d): [", b.ID)
-				for _, id := range antOut[b.ID].contents() {
-					rep := partition[id][0]
-					fmt.Printf(" %s", rep)
-				}
-				fmt.Println(" ]")
-			}
+			fmt.Println(" ]")
 		}
 	}
 
-	return antOut
+	return antIn
 }
 
-func availableOnExit(b *Block, v *Value) bool {
+func availableAt(b *Block, v *Value) bool {
 	return b.Func.sdom().isAncestorEq(v.Block, b)
 }
 
-func anyAvailableOnExit(b *Block, e eqclass) *Value {
+func anyAvailableAt(b *Block, e eqclass) *Value {
 	for _, v := range e {
-		if availableOnExit(b, v) {
+		if availableAt(b, v) {
 			return v
 		}
 	}
@@ -604,7 +588,7 @@ func anyAvailableOnExit(b *Block, e eqclass) *Value {
 // availableArgs replaces each element of `args` with a Value of the same
 // equivalence class, which is available at the exit of `b`. If at least
 // one argument is not available, the function return false.
-func (s *hoistState) availableArgs(b *Block, args []*Value) bool {
+func (s *hoistState) availableArgsAt(b *Block, args []*Value) bool {
 	if b.Func.pass.debug > 3 {
 		fmt.Println("DBG: checking operands", args)
 		//fmt.Println("DBF: valueEqClass =", valueEqClass)
@@ -622,13 +606,13 @@ func (s *hoistState) availableArgs(b *Block, args []*Value) bool {
 			fmt.Printf("DBG: check operand class #%d\n", id)
 		}
 		if id < 0 {
-			if !availableOnExit(b, u) {
+			if !availableAt(b, u) {
 				if b.Func.pass.debug > 3 {
 					fmt.Printf("DBG: %s not available at %s\n", u, b)
 				}
 				return false
 			}
-		} else if u = anyAvailableOnExit(b, s.partition[id]); u == nil {
+		} else if u = anyAvailableAt(b, s.partition[id]); u == nil {
 			if b.Func.pass.debug > 3 {
 				fmt.Println("DBG: none of", s.partition[id], "is available at", b)
 			}
@@ -687,7 +671,7 @@ func (s *hoistState) hoistClass(classID ID) int64 {
 		var tmp [3]*Value
 		args := tmp[:0]
 		args = append(args, v.Args...)
-		if !s.availableArgs(b, args) {
+		if !s.availableArgsAt(b, args) {
 			if s.fn.pass.debug > 3 {
 				fmt.Printf("DBG: %v operands not available at %s\n", v, b)
 			}
@@ -736,7 +720,7 @@ func (s *hoistState) hoistClass(classID ID) int64 {
 }
 
 func hoistValues(f *Func, partition []eqclass, valueEqClass map[ID]ID) int64 {
-	// Collect hoist candidate values at the beginning of the parition.
+	// Collect hoist candidate values at the beginning of the partition.
 	// There should be at least two left in the equivalence class after
 	// the CSE to consider hoisting them.
 	n := 0
@@ -762,7 +746,7 @@ func hoistValues(f *Func, partition []eqclass, valueEqClass map[ID]ID) int64 {
 		fn:           f,
 		partition:    partition,
 		valueEqClass: valueEqClass,
-		antOut:       anticipatedExprs(f, partition, valueEqClass),
+		antIn:        anticipatedExprs(f, partition, valueEqClass),
 		done:         make(map[ID]struct{}),
 	}
 

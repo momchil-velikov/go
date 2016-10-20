@@ -401,18 +401,96 @@ func (sv partitionByArgClass) Less(i, j int) bool {
 	return false
 }
 
-type hoistDst struct {
-	blk *Block
-	v   *Value
-	vs  []*Value
-}
-
 type hoistState struct {
 	fn           *Func
 	partition    []eqclass
 	valueEqClass []ID
-	antIn        []*sparseSet
+	antIn        []anticipatedSet
 	done         map[ID]struct{}
+}
+
+type anticipatedSet struct {
+	elts    []ID
+	storage [4]ID
+}
+
+func (s *anticipatedSet) size() int {
+	return len(s.elts)
+}
+
+func (s *anticipatedSet) clear() {
+	s.elts = s.storage[:0]
+}
+
+func (s *anticipatedSet) add(id ID) {
+	if s.elts == nil {
+		s.elts = append(s.storage[:0], id)
+		return
+	}
+	for _, e := range s.elts {
+		if e == id {
+			return
+		}
+	}
+	s.elts = append(s.elts, id)
+}
+
+func (s *anticipatedSet) set(t anticipatedSet) {
+	s.elts = append(s.storage[:0], t.elts...)
+}
+
+func (s *anticipatedSet) subset(t anticipatedSet) bool {
+	for _, id := range s.elts {
+		if !t.contains(id) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *anticipatedSet) intersect(t anticipatedSet) {
+	if s.size() == 0 || t.size() == 0 {
+		s.clear()
+		return
+	}
+	n := 0
+	for _, id := range s.elts {
+		if t.contains(id) {
+			s.elts[n] = id
+			n++
+		}
+	}
+	s.elts = s.elts[:n]
+}
+
+func (s *anticipatedSet) equal(t anticipatedSet) bool {
+	if len(s.elts) == 0 && len(t.elts) == 0 {
+		return true
+	}
+	if len(s.elts) != len(t.elts) {
+		return false
+	}
+	return s.subset(t) && t.subset(*s)
+}
+
+func (s *anticipatedSet) contains(id ID) bool {
+	for _, e := range s.elts {
+		if e == id {
+			return true
+		}
+	}
+	return false
+
+}
+
+func (s *anticipatedSet) contents() []ID {
+	return s.elts
+}
+
+type hoistDst struct {
+	blk *Block
+	v   *Value
+	vs  []*Value
 }
 
 func addHoistCandidate(f *Func, ds []hoistDst, b *Block) []hoistDst {
@@ -507,16 +585,12 @@ func (s *hoistState) hoistPlan(classID ID) []hoistDst {
 // anticipated/very busy expressions analysis, we are not concerned with
 // the availability of the operands at this point as the availability
 // may change as a result of our own transformations.
-func anticipatedExprs(f *Func, partition []eqclass, valueEqClass []ID) []*sparseSet {
+func anticipatedExprs(f *Func, partition []eqclass, valueEqClass []ID) []anticipatedSet {
 	// Map from block IDs to sets of anticipated expressions.
-	antIn := make([]*sparseSet, f.NumBlocks())
-	nEqClass := len(partition)
-	for i := range antIn {
-		antIn[i] = newSparseSet(nEqClass)
-	}
+	antIn := make([]anticipatedSet, f.NumBlocks())
 	// Temporary buffer for removing elements from a set.
 	post := postorder(f)
-	out := newSparseSet(nEqClass)
+	var out anticipatedSet
 	for {
 		change := false
 		// It's a backward dataflow analysis, hence traverse the blocks

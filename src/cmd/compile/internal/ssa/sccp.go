@@ -5,6 +5,12 @@ import (
 	"math"
 )
 
+// Sparse Conditonal Constant Propagation pass, based on:
+
+// Mark N. Wegman and F. Kenneth Zadeck. 1991. Constant propagation with conditional branches.
+// ACM Trans. Program. Lang. Syst. 13, 2 (April 1991), 181-210.
+// DOI=http://dx.doi.org/10.1145/103135.103136
+
 type latticeKind int
 
 const (
@@ -61,6 +67,9 @@ func sccp(f *Func) {
 		exec:    make(map[Edge]bool),
 		ssalist: newSparseSet(f.NumValues()),
 	}
+
+	// Collect all uses of each value and all blocks, where a value is
+	// the control value.
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			s.cells[v.ID].v = v
@@ -73,32 +82,50 @@ func sccp(f *Func) {
 		}
 	}
 
+	// Start by visiting the entry basic block and loop until there is
+	// no more work in the two work lists.
 	s.visitExprs(f.Entry)
 	for len(s.flowlist) > 0 || s.ssalist.size() > 0 {
 		switch {
 		case len(s.flowlist) > 0:
+			// Fetch a control-flow edge from the "flow" worklist.
 			e := s.flowlist[len(s.flowlist)-1]
 			s.flowlist = s.flowlist[:len(s.flowlist)-1]
+
+			// If edge was already marked as executable, do not enter
+			// the block a second time.
 			if s.exec[e] {
 				continue
 			}
 			s.exec[e] = true
 
+			// Find which incoming edges are marked as executable.
 			tmp := [4]bool{}
 			x, n := s.execEdges(e.b, tmp[:0])
+
+			// Visit φ-ops, as their value potentially changes with each
+			// new executable edge.
 			s.visitPhis(e.b.Preds[e.i].b, e.b, x)
 
+			// The non-φ ops are as a whole only once, following the first
+			// executable edge into the block.
 			if n > 1 {
 				continue
 			}
 			s.visitExprs(e.b)
 
 		case s.ssalist.size() > 0:
+			// Fetch an SSA edge from the SSA worklist (SSA edges are
+			// represented only with their heads).
 			v := s.cells[s.ssalist.pop()].v
 
+			// For the block, containing the value, lFind which incoming
+			// edges are marked as executable.
 			tmp := [4]bool{}
 			x, n := s.execEdges(v.Block, tmp[:0])
 
+			// Visit φ-ops always, but non-φ ops only if there is at
+			// least one executable edge into the block.
 			if v.Op == OpPhi {
 				s.visitPhi(v, x)
 			} else if n > 0 {
@@ -120,6 +147,7 @@ func sccp(f *Func) {
 		}
 	}
 
+	// Replace operations with the corresponing constants.
 	for i := range s.cells {
 		v := s.cells[i].v
 		if v == nil || isConst(v.Op) {
@@ -166,6 +194,9 @@ func sccp(f *Func) {
 	}
 }
 
+// execEdges returns a slice with i-th element set to true iff the i-th
+// incoming edge to a block is marked executable. It also returns the
+// total number of true elements in the slice.
 func (s *sccpState) execEdges(b *Block, x []bool) ([]bool, int) {
 	n := 0
 	for i := range b.Preds {
@@ -178,6 +209,8 @@ func (s *sccpState) execEdges(b *Block, x []bool) ([]bool, int) {
 	return x, n
 }
 
+// visitPhi visits all the φ-ops in the block `b`. The slice `x` marks
+// each executable predecessor edge of the block.
 func (s *sccpState) visitPhis(p *Block, b *Block, x []bool) {
 	if s.f.pass.debug > 2 {
 		fmt.Printf("SCCP enter phis %s -> %s\n", p, b)
@@ -191,6 +224,9 @@ func (s *sccpState) visitPhis(p *Block, b *Block, x []bool) {
 	}
 }
 
+// visitPhi computes the lattice value of the φ-op `v`. The φ arguments,
+// which correspond to non-executable edges (as indicated by the `x`
+// slice) are considered to have value TOP.
 func (s *sccpState) visitPhi(v *Value, x []bool) {
 	new := latticeValue{}
 	for i := 0; i < len(v.Args) && new.kind != latticeBottom; i++ {
@@ -224,6 +260,9 @@ func (s *sccpState) visitPhi(v *Value, x []bool) {
 	}
 }
 
+// visitExprs visits all the non-φ in the block `b`. This is run only
+// when the block is encounterest for teh first time followin an
+// executable edge.
 func (s *sccpState) visitExprs(b *Block) {
 	if s.f.pass.debug > 2 {
 		fmt.Printf("SCCP enter %s\n", b)
@@ -236,16 +275,23 @@ func (s *sccpState) visitExprs(b *Block) {
 		}
 		s.visitExpr(v)
 	}
+
+	// If the block unconditionally transfers control to its successor,
+	// add the outgoing edge to the flow worklist.
 	if b.Kind == BlockPlain {
 		s.flowlist = append(s.flowlist, b.Succs[0])
 	}
 }
 
+// visitExpr computes the lattice value of a non-φ operation.
 func (s *sccpState) visitExpr(v *Value) {
 	new := latticeValue{}
 	if isConst(v.Op) {
+		// OpConst* operations are trivially lattice constants.
 		new = latticeValue{kind: latticeConst, bits: v.AuxInt}
 	} else if t, ok := foldMap[v.Op]; !ok {
+		// If there is no fold function for this o, the latice value is
+		// BOTTOM, not a constant.
 		new.kind = latticeBottom
 	} else {
 		tmpKind := [2]latticeKind{}
@@ -253,6 +299,8 @@ func (s *sccpState) visitExpr(v *Value) {
 		kinds := tmpKind[:0]
 		args := tmpArgs[:0]
 		ntop, nbot := 0, 0
+
+		// Collect the lattice values, corresponding to the arguments.
 		for _, u := range v.Args {
 			a := s.cells[u.ID].lv
 			kinds = append(kinds, a.kind)
@@ -263,6 +311,12 @@ func (s *sccpState) visitExpr(v *Value) {
 				nbot++
 			}
 		}
+		// Invoke the fold function. Fold functions are two kinds. For
+		// the majority of the operations, if any argument is BOTTOM,
+		// then the result is BOTTOM and if any argument is TOP, then
+		// the result is TOP.  Some operations, however, can evaluate to
+		// a constant even if some of the arguments are TOP or BOTTOM,
+		// for example true || <any> == true.
 		if t.genFn == nil {
 			if nbot > 0 {
 				new.kind = latticeBottom
@@ -287,10 +341,19 @@ func (s *sccpState) visitExpr(v *Value) {
 	}
 }
 
+// propagate adds items to the flow worklist or the SSA worklist after
+// the lattice value of `v` has been lowered.
 func (s *sccpState) propagate(v *Value) {
+	// Propagate the change along SSA (data-flow) edges.
 	for _, u := range s.cells[v.ID].use {
 		s.ssalist.add(u.ID)
 	}
+	// Propagate the change along the control-flow edges.  If the
+	// control value is not a constant (BOTTOM), the all the successor
+	// edges are potentially executed. If the control value is a
+	// constants, only the successor, corresponding to the value of the
+	// constant (true or false) is potentially executed. The lattice
+	// value of `v` has been lowered, hence it cannot be TOP.
 	for _, b := range s.cells[v.ID].ctl {
 		if lv := s.cells[v.ID].lv; lv.kind == latticeBottom {
 			s.flowlist = append(s.flowlist, b.Succs...)
@@ -302,6 +365,7 @@ func (s *sccpState) propagate(v *Value) {
 	}
 }
 
+// Constat fold functions.
 func i32f(x int64) float32 {
 	return math.Float32frombits(uint32(x))
 }
@@ -398,6 +462,9 @@ func foldDiv64F(a []int64) int64 {
 	return f64i(i64f(a[0]) / i64f(a[1]))
 }
 
+// Division and modulo functions fold only operations with a constant
+// non-zero divisor, otherwise the value is considered non-constant and
+// the runtime is left to handle the division by zero.
 func foldDiv8(k []latticeKind, a []int64) latticeValue {
 	if k[0] == latticeBottom || k[1] == latticeBottom {
 		return latticeValue{kind: latticeBottom}
@@ -574,6 +641,7 @@ func foldGeq64F(a []int64) int64 {
 	return b2i(i64f(a[0]) >= i64f(a[1]))
 }
 
+// foldAndB is a special case: false && <any> == false, <any> && false == false.
 func foldAndB(k []latticeKind, a []int64) latticeValue {
 	if k[0] == latticeConst && a[0] == 0 || k[1] == latticeConst && a[1] == 0 {
 		return latticeValue{kind: latticeConst, bits: 0}
@@ -587,6 +655,7 @@ func foldAndB(k []latticeKind, a []int64) latticeValue {
 	return latticeValue{kind: latticeConst, bits: b2i(a[0] != 0 && a[1] != 0)}
 }
 
+// foldOrB is a special case: true || <any> == true, <any> || true == true.
 func foldOrB(k []latticeKind, a []int64) latticeValue {
 	if k[0] == latticeConst && a[0] == 1 || k[1] == latticeConst && a[1] == 1 {
 		return latticeValue{kind: latticeConst, bits: 1}
@@ -728,9 +797,13 @@ func isConst(op Op) bool {
 	return op == OpConstBool || OpConst8 <= op && op <= OpConst64
 }
 
+// Table of fold functions.
+
 type foldFn struct {
-	fn    func([]int64) int64                       // fold function for CONST only
-	genFn func([]latticeKind, []int64) latticeValue // general fold function
+	// General fold function.
+	genFn func([]latticeKind, []int64) latticeValue
+	// Fold function when all of the arguments are constant.
+	fn func([]int64) int64
 }
 
 var foldMap = map[Op]foldFn{

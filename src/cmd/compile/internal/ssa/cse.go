@@ -72,7 +72,7 @@ func cse(f *Func) {
 	}
 
 	// map from value id back to eqclass id
-	valueEqClass := make(map[ID]ID, f.NumValues())
+	valueEqClass := make([]ID, f.NumValues())
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			// Use negative equivalence class #s for unique values.
@@ -380,8 +380,8 @@ func (sv partitionByDom) Less(i, j int) bool {
 }
 
 type partitionByArgClass struct {
-	a       []*Value  // array of values
-	eqClass map[ID]ID // equivalence class IDs of values
+	a       []*Value // array of values
+	eqClass []ID     // equivalence class IDs of values
 }
 
 func (sv partitionByArgClass) Len() int      { return len(sv.a) }
@@ -410,7 +410,7 @@ type hoistDst struct {
 type hoistState struct {
 	fn           *Func
 	partition    []eqclass
-	valueEqClass map[ID]ID
+	valueEqClass []ID
 	antIn        []*sparseSet
 	done         map[ID]struct{}
 }
@@ -507,7 +507,7 @@ func (s *hoistState) hoistPlan(classID ID) []hoistDst {
 // anticipated/very busy expressions analysis, we are not concerned with
 // the availability of the operands at this point as the availability
 // may change as a result of our own transformations.
-func anticipatedExprs(f *Func, partition []eqclass, valueEqClass map[ID]ID) []*sparseSet {
+func anticipatedExprs(f *Func, partition []eqclass, valueEqClass []ID) []*sparseSet {
 	// Map from block IDs to sets of anticipated expressions.
 	antIn := make([]*sparseSet, f.NumBlocks())
 	nEqClass := len(partition)
@@ -619,6 +619,14 @@ func (s *hoistState) availableArgsAt(b *Block, args []*Value) bool {
 	return true
 }
 
+func updateValueEqClass(a []ID, id ID, class ID) []ID {
+	for id >= ID(len(a)) {
+		a = append(a, 0)
+	}
+	a[id] = class
+	return a
+}
+
 func (s *hoistState) hoistClass(classID ID) int64 {
 	if len(s.partition[classID]) < 2 {
 		return 0
@@ -679,7 +687,7 @@ func (s *hoistState) hoistClass(classID ID) int64 {
 		c.Aux = v.Aux
 		c.AuxInt = v.AuxInt
 		c.AddArgs(args...)
-		s.valueEqClass[c.ID] = classID
+		s.valueEqClass = updateValueEqClass(s.valueEqClass, c.ID, classID)
 		dst[i].v = c
 		if s.fn.pass.debug > 1 {
 			fmt.Printf("FN: %s CSE.HOIST: %s <-", s.fn.Name, b)
@@ -715,7 +723,7 @@ func (s *hoistState) hoistClass(classID ID) int64 {
 	return hoists
 }
 
-func hoistValues(f *Func, partition []eqclass, valueEqClass map[ID]ID) int64 {
+func hoistValues(f *Func, partition []eqclass, valueEqClass []ID) int64 {
 	// Collect hoist candidate values at the beginning of the partition.
 	// There should be at least two left in the equivalence class after
 	// the CSE to consider hoisting them.

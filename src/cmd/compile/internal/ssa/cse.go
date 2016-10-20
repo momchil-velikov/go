@@ -251,10 +251,6 @@ func cse(f *Func) {
 	}
 
 	hoists := hoistValues(f, partition, valueEqClass)
-	if hoists > 0 {
-		deadcode(f)
-		phielim(f)
-	}
 
 	if f.pass.stats > 0 {
 		f.LogStat("CSE HOISTED", hoists)

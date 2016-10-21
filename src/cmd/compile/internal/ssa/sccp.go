@@ -569,6 +569,90 @@ func foldDivU64(k []latticeKind, a []int64) latticeValue {
 	return latticeValue{kind: latticeConst, bits: int64(uint64(a[0]) / uint64(a[1]))}
 }
 
+func foldAnd8(a []int64) int64 {
+	return int64(int8(a[0] & a[1]))
+}
+
+func foldAnd16(a []int64) int64 {
+	return int64(int16(a[0] & a[1]))
+}
+
+func foldAnd32(a []int64) int64 {
+	return int64(int32(a[0] & a[1]))
+}
+
+func foldAnd64(a []int64) int64 {
+	return a[0] & a[1]
+}
+
+func foldOr8(a []int64) int64 {
+	return int64(int8(a[0] | a[1]))
+}
+
+func foldOr16(a []int64) int64 {
+	return int64(int16(a[0] | a[1]))
+}
+
+func foldOr32(a []int64) int64 {
+	return int64(int32(a[0] | a[1]))
+}
+
+func foldOr64(a []int64) int64 {
+	return a[0] | a[1]
+}
+
+func foldXor8(a []int64) int64 {
+	return int64(int8(a[0] ^ a[1]))
+}
+
+func foldXor16(a []int64) int64 {
+	return int64(int16(a[0] ^ a[1]))
+}
+
+func foldXor32(a []int64) int64 {
+	return int64(int32(a[0] ^ a[1]))
+}
+
+func foldXor64(a []int64) int64 {
+	return a[0] ^ a[1]
+}
+
+func foldLsh8(a []int64) int64 {
+	return int64(int8(a[0]) << uint64(a[1]))
+}
+
+func foldLsh16(a []int64) int64 {
+	return int64(int16(a[0]) << uint64(a[1]))
+}
+
+func foldLsh32(a []int64) int64 {
+	return int64(int32(a[0]) << uint64(a[1]))
+}
+
+func foldLsh64(a []int64) int64 {
+	return int64(a[0] << uint64(a[1]))
+}
+
+func foldRsh(a []int64) int64 {
+	return a[0] >> uint64(a[1])
+}
+
+func foldRsh8U(a []int64) int64 {
+	return int64(int8(uint8(a[0]) >> uint64(a[1])))
+}
+
+func foldRsh16U(a []int64) int64 {
+	return int64(int16(uint16(a[0]) >> uint64(a[1])))
+}
+
+func foldRsh32U(a []int64) int64 {
+	return int64(int32(uint32(a[0]) >> uint64(a[1])))
+}
+
+func foldRsh64U(a []int64) int64 {
+	return int64(uint64(a[0]) >> uint64(a[1]))
+}
+
 func foldEq(a []int64) int64 {
 	return b2i(a[0] == a[1])
 }
@@ -869,67 +953,82 @@ var foldMap = [...]foldFn{
 	// OpMod64
 	// OpMod64u
 
-	// OpAnd8
-	// OpAnd16
-	// OpAnd32
-	// OpAnd64
-	// OpOr8
-	// OpOr16
-	// OpOr32
-	// OpOr64
-	// OpXor8
-	// OpXor16
-	// OpXor32
-	// OpXor64
-	// OpLsh8x8
-	// OpLsh8x16
-	// OpLsh8x32
-	// OpLsh8x64
-	// OpLsh16x8
-	// OpLsh16x16
-	// OpLsh16x32
-	// OpLsh16x64
-	// OpLsh32x8
-	// OpLsh32x16
-	// OpLsh32x32
-	// OpLsh32x64
-	// OpLsh64x8
-	// OpLsh64x16
-	// OpLsh64x32
-	// OpLsh64x64
-	// OpRsh8x8
-	// OpRsh8x16
-	// OpRsh8x32
-	// OpRsh8x64
-	// OpRsh16x8
-	// OpRsh16x16
-	// OpRsh16x32
-	// OpRsh16x64
-	// OpRsh32x8
-	// OpRsh32x16
-	// OpRsh32x32
-	// OpRsh32x64
-	// OpRsh64x8
-	// OpRsh64x16
-	// OpRsh64x32
-	// OpRsh64x64
-	// OpRsh8Ux8
-	// OpRsh8Ux16
-	// OpRsh8Ux32
-	// OpRsh8Ux64
-	// OpRsh16Ux8
-	// OpRsh16Ux16
-	// OpRsh16Ux32
-	// OpRsh16Ux64
-	// OpRsh32Ux8
-	// OpRsh32Ux16
-	// OpRsh32Ux32
-	// OpRsh32Ux64
-	// OpRsh64Ux8
-	// OpRsh64Ux16
-	// OpRsh64Ux32
-	// OpRsh64Ux64
-	// OpLrot8
+	OpAnd8 - OpAdd8:  {fn: foldAnd8},
+	OpAnd16 - OpAdd8: {fn: foldAnd16},
+	OpAnd32 - OpAdd8: {fn: foldAnd32},
+	OpAnd64 - OpAdd8: {fn: foldAnd64},
+
+	OpOr8 - OpAdd8:  {fn: foldOr8},
+	OpOr16 - OpAdd8: {fn: foldOr16},
+	OpOr32 - OpAdd8: {fn: foldOr32},
+	OpOr64 - OpAdd8: {fn: foldOr64},
+
+	OpXor8 - OpAdd8:  {fn: foldXor8},
+	OpXor16 - OpAdd8: {fn: foldXor16},
+	OpXor32 - OpAdd8: {fn: foldXor32},
+	OpXor64 - OpAdd8: {fn: foldXor64},
+
+	OpLsh8x8 - OpAdd8:  {fn: foldLsh8},
+	OpLsh8x16 - OpAdd8: {fn: foldLsh8},
+	OpLsh8x32 - OpAdd8: {fn: foldLsh8},
+	OpLsh8x64 - OpAdd8: {fn: foldLsh8},
+
+	OpLsh16x8 - OpAdd8:  {fn: foldLsh16},
+	OpLsh16x16 - OpAdd8: {fn: foldLsh16},
+	OpLsh16x32 - OpAdd8: {fn: foldLsh16},
+	OpLsh16x64 - OpAdd8: {fn: foldLsh16},
+
+	OpLsh32x8 - OpAdd8:  {fn: foldLsh32},
+	OpLsh32x16 - OpAdd8: {fn: foldLsh32},
+	OpLsh32x32 - OpAdd8: {fn: foldLsh32},
+	OpLsh32x64 - OpAdd8: {fn: foldLsh32},
+
+	OpLsh64x8 - OpAdd8:  {fn: foldLsh64},
+	OpLsh64x16 - OpAdd8: {fn: foldLsh64},
+	OpLsh64x32 - OpAdd8: {fn: foldLsh64},
+	OpLsh64x64 - OpAdd8: {fn: foldLsh64},
+
+	OpRsh8x8 - OpAdd8:  {fn: foldRsh},
+	OpRsh8x16 - OpAdd8: {fn: foldRsh},
+	OpRsh8x32 - OpAdd8: {fn: foldRsh},
+	OpRsh8x64 - OpAdd8: {fn: foldRsh},
+
+	OpRsh16x8 - OpAdd8:  {fn: foldRsh},
+	OpRsh16x16 - OpAdd8: {fn: foldRsh},
+	OpRsh16x32 - OpAdd8: {fn: foldRsh},
+	OpRsh16x64 - OpAdd8: {fn: foldRsh},
+
+	OpRsh32x8 - OpAdd8:  {fn: foldRsh},
+	OpRsh32x16 - OpAdd8: {fn: foldRsh},
+	OpRsh32x32 - OpAdd8: {fn: foldRsh},
+	OpRsh32x64 - OpAdd8: {fn: foldRsh},
+
+	OpRsh64x8 - OpAdd8:  {fn: foldRsh},
+	OpRsh64x16 - OpAdd8: {fn: foldRsh},
+	OpRsh64x32 - OpAdd8: {fn: foldRsh},
+	OpRsh64x64 - OpAdd8: {fn: foldRsh},
+
+	OpRsh8Ux8 - OpAdd8:  {fn: foldRsh8U},
+	OpRsh8Ux16 - OpAdd8: {fn: foldRsh8U},
+	OpRsh8Ux32 - OpAdd8: {fn: foldRsh8U},
+	OpRsh8Ux64 - OpAdd8: {fn: foldRsh8U},
+
+	OpRsh16Ux8 - OpAdd8:  {fn: foldRsh16U},
+	OpRsh16Ux16 - OpAdd8: {fn: foldRsh16U},
+	OpRsh16Ux32 - OpAdd8: {fn: foldRsh16U},
+	OpRsh16Ux64 - OpAdd8: {fn: foldRsh16U},
+
+	OpRsh32Ux8 - OpAdd8:  {fn: foldRsh32U},
+	OpRsh32Ux16 - OpAdd8: {fn: foldRsh32U},
+	OpRsh32Ux32 - OpAdd8: {fn: foldRsh32U},
+	OpRsh32Ux64 - OpAdd8: {fn: foldRsh32U},
+
+	OpRsh64Ux8 - OpAdd8:  {fn: foldRsh64U},
+	OpRsh64Ux16 - OpAdd8: {fn: foldRsh64U},
+	OpRsh64Ux32 - OpAdd8: {fn: foldRsh64U},
+	OpRsh64Ux64 - OpAdd8: {fn: foldRsh64U},
+
+	// OpLrot8 TODO
 	// OpLrot16
 	// OpLrot32
 	// OpLrot64

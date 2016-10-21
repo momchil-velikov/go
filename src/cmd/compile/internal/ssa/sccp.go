@@ -128,7 +128,7 @@ func sccp(f *Func) {
 			// least one executable edge into the block.
 			if v.Op == OpPhi {
 				s.visitPhi(v, x)
-			} else if n > 0 {
+			} else if n > 0 || v.Block == f.Entry {
 				s.visitExpr(v)
 			}
 		}

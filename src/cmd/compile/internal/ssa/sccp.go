@@ -289,7 +289,7 @@ func (s *sccpState) visitExpr(v *Value) {
 	if isConst(v.Op) {
 		// OpConst* operations are trivially lattice constants.
 		new = latticeValue{kind: latticeConst, bits: v.AuxInt}
-	} else if t, ok := foldMap[v.Op]; !ok {
+	} else if t, ok := getFoldFn(v.Op); !ok {
 		// If there is no fold function for this o, the latice value is
 		// BOTTOM, not a constant.
 		new.kind = latticeBottom
@@ -799,6 +799,14 @@ func isConst(op Op) bool {
 
 // Table of fold functions.
 
+func getFoldFn(op Op) (foldFn, bool) {
+	i := int(op - OpAdd8)
+	if i >= len(foldMap) || foldMap[i].fn == nil && foldMap[i].genFn == nil {
+		return foldFn{}, false
+	}
+	return foldMap[i], true
+}
+
 type foldFn struct {
 	// General fold function.
 	genFn func([]latticeKind, []int64) latticeValue
@@ -806,32 +814,32 @@ type foldFn struct {
 	fn func([]int64) int64
 }
 
-var foldMap = map[Op]foldFn{
-	OpAdd8:  {fn: foldAdd8},
-	OpAdd16: {fn: foldAdd16},
-	OpAdd32: {fn: foldAdd32},
-	OpAdd64: {fn: foldAdd64},
+var foldMap = [...]foldFn{
+	OpAdd8 - OpAdd8:  {fn: foldAdd8},
+	OpAdd16 - OpAdd8: {fn: foldAdd16},
+	OpAdd32 - OpAdd8: {fn: foldAdd32},
+	OpAdd64 - OpAdd8: {fn: foldAdd64},
 	//	OpAddPtr  NOPE
 
-	OpAdd32F: {fn: foldAdd32F},
-	OpAdd64F: {fn: foldAdd64F},
+	OpAdd32F - OpAdd8: {fn: foldAdd32F},
+	OpAdd64F - OpAdd8: {fn: foldAdd64F},
 
-	OpSub8:  {fn: foldSub8},
-	OpSub16: {fn: foldSub16},
-	OpSub32: {fn: foldSub32},
-	OpSub64: {fn: foldSub64},
+	OpSub8 - OpAdd8:  {fn: foldSub8},
+	OpSub16 - OpAdd8: {fn: foldSub16},
+	OpSub32 - OpAdd8: {fn: foldSub32},
+	OpSub64 - OpAdd8: {fn: foldSub64},
 	//	OpSubPtr  NOPE
-	OpSub32F: {fn: foldSub32F},
-	OpSub64F: {fn: foldSub64F},
+	OpSub32F - OpAdd8: {fn: foldSub32F},
+	OpSub64F - OpAdd8: {fn: foldSub64F},
 
-	OpMul8:   {fn: foldMul8},
-	OpMul16:  {fn: foldMul16},
-	OpMul32:  {fn: foldMul32},
-	OpMul64:  {fn: foldMul64},
-	OpMul32F: {fn: foldMul32F},
-	OpMul64F: {fn: foldMul64F},
-	OpDiv32F: {fn: foldDiv32F},
-	OpDiv64F: {fn: foldDiv64F},
+	OpMul8 - OpAdd8:   {fn: foldMul8},
+	OpMul16 - OpAdd8:  {fn: foldMul16},
+	OpMul32 - OpAdd8:  {fn: foldMul32},
+	OpMul64 - OpAdd8:  {fn: foldMul64},
+	OpMul32F - OpAdd8: {fn: foldMul32F},
+	OpMul64F - OpAdd8: {fn: foldMul64F},
+	OpDiv32F - OpAdd8: {fn: foldDiv32F},
+	OpDiv64F - OpAdd8: {fn: foldDiv64F},
 	// OpHmul8: TODO
 	// OpHmul8u
 	// OpHmul16
@@ -840,15 +848,18 @@ var foldMap = map[Op]foldFn{
 	// OpHmul32u
 	// OpHmul64
 	// OpHmul64u
+	// OpMul32uhilo
+	// OpMul64uhilo
 	// OpAvg64u
-	OpDiv8:   {genFn: foldDiv8},
-	OpDiv16:  {genFn: foldDiv16},
-	OpDiv32:  {genFn: foldDiv32},
-	OpDiv64:  {genFn: foldDiv64},
-	OpDiv8u:  {genFn: foldDivU8},
-	OpDiv16u: {genFn: foldDivU16},
-	OpDiv32u: {genFn: foldDivU32},
-	OpDiv64u: {genFn: foldDivU64},
+	OpDiv8 - OpAdd8:   {genFn: foldDiv8},
+	OpDiv16 - OpAdd8:  {genFn: foldDiv16},
+	OpDiv32 - OpAdd8:  {genFn: foldDiv32},
+	OpDiv64 - OpAdd8:  {genFn: foldDiv64},
+	OpDiv8u - OpAdd8:  {genFn: foldDivU8},
+	OpDiv16u - OpAdd8: {genFn: foldDivU16},
+	OpDiv32u - OpAdd8: {genFn: foldDivU32},
+	OpDiv64u - OpAdd8: {genFn: foldDivU64},
+	// OpDiv128u
 	// OpMod8: TODO
 	// OpMod8u
 	// OpMod16
@@ -857,84 +868,150 @@ var foldMap = map[Op]foldFn{
 	// OpMod32u
 	// OpMod64
 	// OpMod64u
-	OpEq8:  {fn: foldEq},
-	OpEq16: {fn: foldEq},
-	OpEq32: {fn: foldEq},
-	OpEq64: {fn: foldEq},
+
+	// OpAnd8
+	// OpAnd16
+	// OpAnd32
+	// OpAnd64
+	// OpOr8
+	// OpOr16
+	// OpOr32
+	// OpOr64
+	// OpXor8
+	// OpXor16
+	// OpXor32
+	// OpXor64
+	// OpLsh8x8
+	// OpLsh8x16
+	// OpLsh8x32
+	// OpLsh8x64
+	// OpLsh16x8
+	// OpLsh16x16
+	// OpLsh16x32
+	// OpLsh16x64
+	// OpLsh32x8
+	// OpLsh32x16
+	// OpLsh32x32
+	// OpLsh32x64
+	// OpLsh64x8
+	// OpLsh64x16
+	// OpLsh64x32
+	// OpLsh64x64
+	// OpRsh8x8
+	// OpRsh8x16
+	// OpRsh8x32
+	// OpRsh8x64
+	// OpRsh16x8
+	// OpRsh16x16
+	// OpRsh16x32
+	// OpRsh16x64
+	// OpRsh32x8
+	// OpRsh32x16
+	// OpRsh32x32
+	// OpRsh32x64
+	// OpRsh64x8
+	// OpRsh64x16
+	// OpRsh64x32
+	// OpRsh64x64
+	// OpRsh8Ux8
+	// OpRsh8Ux16
+	// OpRsh8Ux32
+	// OpRsh8Ux64
+	// OpRsh16Ux8
+	// OpRsh16Ux16
+	// OpRsh16Ux32
+	// OpRsh16Ux64
+	// OpRsh32Ux8
+	// OpRsh32Ux16
+	// OpRsh32Ux32
+	// OpRsh32Ux64
+	// OpRsh64Ux8
+	// OpRsh64Ux16
+	// OpRsh64Ux32
+	// OpRsh64Ux64
+	// OpLrot8
+	// OpLrot16
+	// OpLrot32
+	// OpLrot64
+
+	OpEq8 - OpAdd8:  {fn: foldEq},
+	OpEq16 - OpAdd8: {fn: foldEq},
+	OpEq32 - OpAdd8: {fn: foldEq},
+	OpEq64 - OpAdd8: {fn: foldEq},
 	//	OpEqPtr NOPE
 	//	OpEqInter
 	//	OpEqSlice
-	OpEq32F: {fn: foldEq},
-	OpEq64F: {fn: foldEq},
-	OpNeq8:  {fn: foldNeq},
-	OpNeq16: {fn: foldNeq},
-	OpNeq32: {fn: foldNeq},
-	OpNeq64: {fn: foldNeq},
+	OpEq32F - OpAdd8: {fn: foldEq},
+	OpEq64F - OpAdd8: {fn: foldEq},
+	OpNeq8 - OpAdd8:  {fn: foldNeq},
+	OpNeq16 - OpAdd8: {fn: foldNeq},
+	OpNeq32 - OpAdd8: {fn: foldNeq},
+	OpNeq64 - OpAdd8: {fn: foldNeq},
 	//	OpNeqPtr NOPE
 	//	OpNeqInter
 	//	OpNeqSlice
-	OpNeq32F:  {fn: foldNeq},
-	OpNeq64F:  {fn: foldNeq},
-	OpLess8:   {fn: foldLess},
-	OpLess16:  {fn: foldLess},
-	OpLess32:  {fn: foldLess},
-	OpLess64:  {fn: foldLess},
-	OpLess8U:  {fn: foldLessU},
-	OpLess16U: {fn: foldLessU},
-	OpLess32U: {fn: foldLessU},
-	OpLess64U: {fn: foldLessU},
-	OpLess32F: {fn: foldLess32F},
-	OpLess64F: {fn: foldLess64F},
-	OpLeq8:    {fn: foldLeq},
-	OpLeq16:   {fn: foldLeq},
-	OpLeq32:   {fn: foldLeq},
-	OpLeq64:   {fn: foldLeq},
-	OpLeq8U:   {fn: foldLeqU},
-	OpLeq16U:  {fn: foldLeqU},
-	OpLeq32U:  {fn: foldLeqU},
-	OpLeq64U:  {fn: foldLeqU},
-	OpLeq32F:  {fn: foldLeq32F},
-	OpLeq64F:  {fn: foldLeq64F},
+	OpNeq32F - OpAdd8:  {fn: foldNeq},
+	OpNeq64F - OpAdd8:  {fn: foldNeq},
+	OpLess8 - OpAdd8:   {fn: foldLess},
+	OpLess16 - OpAdd8:  {fn: foldLess},
+	OpLess32 - OpAdd8:  {fn: foldLess},
+	OpLess64 - OpAdd8:  {fn: foldLess},
+	OpLess8U - OpAdd8:  {fn: foldLessU},
+	OpLess16U - OpAdd8: {fn: foldLessU},
+	OpLess32U - OpAdd8: {fn: foldLessU},
+	OpLess64U - OpAdd8: {fn: foldLessU},
+	OpLess32F - OpAdd8: {fn: foldLess32F},
+	OpLess64F - OpAdd8: {fn: foldLess64F},
+	OpLeq8 - OpAdd8:    {fn: foldLeq},
+	OpLeq16 - OpAdd8:   {fn: foldLeq},
+	OpLeq32 - OpAdd8:   {fn: foldLeq},
+	OpLeq64 - OpAdd8:   {fn: foldLeq},
+	OpLeq8U - OpAdd8:   {fn: foldLeqU},
+	OpLeq16U - OpAdd8:  {fn: foldLeqU},
+	OpLeq32U - OpAdd8:  {fn: foldLeqU},
+	OpLeq64U - OpAdd8:  {fn: foldLeqU},
+	OpLeq32F - OpAdd8:  {fn: foldLeq32F},
+	OpLeq64F - OpAdd8:  {fn: foldLeq64F},
 
-	OpGreater8:   {fn: foldGreater},
-	OpGreater16:  {fn: foldGreater},
-	OpGreater32:  {fn: foldGreater},
-	OpGreater64:  {fn: foldGreater},
-	OpGreater8U:  {fn: foldGreaterU},
-	OpGreater16U: {fn: foldGreaterU},
-	OpGreater32U: {fn: foldGreaterU},
-	OpGreater64U: {fn: foldGreaterU},
-	OpGreater32F: {fn: foldGreater32F},
-	OpGreater64F: {fn: foldGreater64F},
+	OpGreater8 - OpAdd8:   {fn: foldGreater},
+	OpGreater16 - OpAdd8:  {fn: foldGreater},
+	OpGreater32 - OpAdd8:  {fn: foldGreater},
+	OpGreater64 - OpAdd8:  {fn: foldGreater},
+	OpGreater8U - OpAdd8:  {fn: foldGreaterU},
+	OpGreater16U - OpAdd8: {fn: foldGreaterU},
+	OpGreater32U - OpAdd8: {fn: foldGreaterU},
+	OpGreater64U - OpAdd8: {fn: foldGreaterU},
+	OpGreater32F - OpAdd8: {fn: foldGreater32F},
+	OpGreater64F - OpAdd8: {fn: foldGreater64F},
 
-	OpGeq8:  {fn: foldGeq},
-	OpGeq16: {fn: foldGeq},
-	OpGeq32: {fn: foldGeq},
-	OpGeq64: {fn: foldGeq},
+	OpGeq8 - OpAdd8:  {fn: foldGeq},
+	OpGeq16 - OpAdd8: {fn: foldGeq},
+	OpGeq32 - OpAdd8: {fn: foldGeq},
+	OpGeq64 - OpAdd8: {fn: foldGeq},
 
-	OpGeq8U:  {fn: foldGeqU},
-	OpGeq16U: {fn: foldGeqU},
-	OpGeq32U: {fn: foldGeqU},
-	OpGeq64U: {fn: foldGeqU},
-	OpGeq32F: {fn: foldGeq32F},
-	OpGeq64F: {fn: foldGeq64F},
+	OpGeq8U - OpAdd8:  {fn: foldGeqU},
+	OpGeq16U - OpAdd8: {fn: foldGeqU},
+	OpGeq32U - OpAdd8: {fn: foldGeqU},
+	OpGeq64U - OpAdd8: {fn: foldGeqU},
+	OpGeq32F - OpAdd8: {fn: foldGeq32F},
+	OpGeq64F - OpAdd8: {fn: foldGeq64F},
 
-	OpAndB: {genFn: foldAndB},
-	OpOrB:  {genFn: foldOrB},
+	OpAndB - OpAdd8: {genFn: foldAndB},
+	OpOrB - OpAdd8:  {genFn: foldOrB},
 
-	OpEqB:    {fn: foldEq},
-	OpNeqB:   {fn: foldNeq},
-	OpNot:    {fn: foldNot},
-	OpNeg8:   {fn: foldNeg},
-	OpNeg16:  {fn: foldNeg},
-	OpNeg32:  {fn: foldNeg},
-	OpNeg64:  {fn: foldNeg},
-	OpNeg32F: {fn: foldNeg32F},
-	OpNeg64F: {fn: foldNeg64F},
-	OpCom8:   {fn: foldCom},
-	OpCom16:  {fn: foldCom},
-	OpCom32:  {fn: foldCom},
-	OpCom64:  {fn: foldCom},
+	OpEqB - OpAdd8:    {fn: foldEq},
+	OpNeqB - OpAdd8:   {fn: foldNeq},
+	OpNot - OpAdd8:    {fn: foldNot},
+	OpNeg8 - OpAdd8:   {fn: foldNeg},
+	OpNeg16 - OpAdd8:  {fn: foldNeg},
+	OpNeg32 - OpAdd8:  {fn: foldNeg},
+	OpNeg64 - OpAdd8:  {fn: foldNeg},
+	OpNeg32F - OpAdd8: {fn: foldNeg32F},
+	OpNeg64F - OpAdd8: {fn: foldNeg64F},
+	OpCom8 - OpAdd8:   {fn: foldCom},
+	OpCom16 - OpAdd8:  {fn: foldCom},
+	OpCom32 - OpAdd8:  {fn: foldCom},
+	OpCom64 - OpAdd8:  {fn: foldCom},
 	// OpCtz32 TODO
 	// OpCtz64
 	// OpBswap32
@@ -942,7 +1019,7 @@ var foldMap = map[Op]foldFn{
 	// OpSqrt
 
 	// OpPhi
-	OpCopy: {fn: foldCopy},
+	OpCopy - OpAdd8: {fn: foldCopy},
 
 	// OpConvert  NOPE-NOPE-NOPE
 	// OpConstBool
@@ -972,43 +1049,69 @@ var foldMap = map[Op]foldFn{
 	// OpGoCall
 	// OpInterCall
 
-	OpSignExt8to16:  {fn: foldSignExt8},
-	OpSignExt8to32:  {fn: foldSignExt8},
-	OpSignExt8to64:  {fn: foldSignExt8},
-	OpSignExt16to32: {fn: foldSignExt16},
-	OpSignExt16to64: {fn: foldSignExt16},
-	OpSignExt32to64: {fn: foldSignExt32},
+	OpSignExt8to16 - OpAdd8:  {fn: foldSignExt8},
+	OpSignExt8to32 - OpAdd8:  {fn: foldSignExt8},
+	OpSignExt8to64 - OpAdd8:  {fn: foldSignExt8},
+	OpSignExt16to32 - OpAdd8: {fn: foldSignExt16},
+	OpSignExt16to64 - OpAdd8: {fn: foldSignExt16},
+	OpSignExt32to64 - OpAdd8: {fn: foldSignExt32},
 
-	OpZeroExt8to16:  {fn: foldZeroExt8},
-	OpZeroExt8to32:  {fn: foldZeroExt8},
-	OpZeroExt8to64:  {fn: foldZeroExt8},
-	OpZeroExt16to32: {fn: foldZeroExt16},
-	OpZeroExt16to64: {fn: foldZeroExt16},
-	OpZeroExt32to64: {fn: foldZeroExt32},
+	OpZeroExt8to16 - OpAdd8:  {fn: foldZeroExt8},
+	OpZeroExt8to32 - OpAdd8:  {fn: foldZeroExt8},
+	OpZeroExt8to64 - OpAdd8:  {fn: foldZeroExt8},
+	OpZeroExt16to32 - OpAdd8: {fn: foldZeroExt16},
+	OpZeroExt16to64 - OpAdd8: {fn: foldZeroExt16},
+	OpZeroExt32to64 - OpAdd8: {fn: foldZeroExt32},
 
-	OpTrunc16to8:  {fn: foldTruncTo8},
-	OpTrunc32to8:  {fn: foldTruncTo8},
-	OpTrunc64to8:  {fn: foldTruncTo8},
-	OpTrunc32to16: {fn: foldTruncTo16},
-	OpTrunc64to16: {fn: foldTruncTo16},
-	OpTrunc64to32: {fn: foldTruncTo32},
+	OpTrunc16to8 - OpAdd8:  {fn: foldTruncTo8},
+	OpTrunc32to8 - OpAdd8:  {fn: foldTruncTo8},
+	OpTrunc64to8 - OpAdd8:  {fn: foldTruncTo8},
+	OpTrunc32to16 - OpAdd8: {fn: foldTruncTo16},
+	OpTrunc64to16 - OpAdd8: {fn: foldTruncTo16},
+	OpTrunc64to32 - OpAdd8: {fn: foldTruncTo32},
 
-	OpCvt32to32F: {fn: foldCvt32to32F},
-	OpCvt32to64F: {fn: foldCvt32to64F},
+	OpCvt32to32F - OpAdd8: {fn: foldCvt32to32F},
+	OpCvt32to64F - OpAdd8: {fn: foldCvt32to64F},
 
-	OpCvt64to32F: {fn: foldCvt64to32F},
-	OpCvt64to64F: {fn: foldCvt64to64F},
+	OpCvt64to32F - OpAdd8: {fn: foldCvt64to32F},
+	OpCvt64to64F - OpAdd8: {fn: foldCvt64to64F},
 
-	OpCvt32Fto32: {fn: foldCvt32Fto32},
-	OpCvt32Fto64: {fn: foldCvt32Fto64},
+	OpCvt32Fto32 - OpAdd8: {fn: foldCvt32Fto32},
+	OpCvt32Fto64 - OpAdd8: {fn: foldCvt32Fto64},
 
-	OpCvt64Fto32: {fn: foldCvt64Fto32},
-	OpCvt64Fto64: {fn: foldCvt64Fto64},
+	OpCvt64Fto32 - OpAdd8: {fn: foldCvt64Fto32},
+	OpCvt64Fto64 - OpAdd8: {fn: foldCvt64Fto64},
 
-	OpCvt32Fto64F: {fn: foldCvt32Fto32},
-	OpCvt64Fto32F: {fn: foldCvt32Fto32},
+	OpCvt32Fto64F - OpAdd8: {fn: foldCvt32Fto32},
+	OpCvt64Fto32F - OpAdd8: {fn: foldCvt32Fto32},
 
 	// OpIsNonNil NOPE-NOPE-NOPE
+	// OpIsInBounds
+	// OpIsSliceInBounds
+	// OpNilCheck
+	// OpGetG
+	// OpGetClosurePtr
+	// OpArrayIndex
+	// OpPtrIndex
+	// OpOffPtr
+	// OpSliceMake
+	// OpSlicePtr
+	// OpSliceLen
+	// OpSliceCap
+	// OpComplexMake
+	// OpComplexReal
+	// OpComplexImag
+	// OpStringMake
+	// OpStringPtr
+	// OpStringLen
+	// OpIMake
+	// OpITab
+	// OpIData
+	// OpStructMake0
+	// OpStructMake1
+	// OpStructMake2
+	// OpStructMake3
+
 	// OpStructMake4
 	// OpStructSelect
 	// OpStoreReg
@@ -1032,14 +1135,14 @@ var foldMap = map[Op]foldFn{
 	// OpSignmask TODO
 	// OpZeromask
 
-	OpCvt32Uto32F: {fn: foldCvt32Uto32F},
-	OpCvt32Uto64F: {fn: foldCvt32Uto64F},
-	OpCvt32Fto32U: {fn: foldCvt32Fto32U},
-	OpCvt64Fto32U: {fn: foldCvt64Fto32U},
-	OpCvt64Uto32F: {fn: foldCvt64Uto32F},
-	OpCvt64Uto64F: {fn: foldCvt64Uto64F},
-	OpCvt32Fto64U: {fn: foldCvt32Fto64U},
-	OpCvt64Fto64U: {fn: foldCvt64Fto64U},
+	OpCvt32Uto32F - OpAdd8: {fn: foldCvt32Uto32F},
+	OpCvt32Uto64F - OpAdd8: {fn: foldCvt32Uto64F},
+	OpCvt32Fto32U - OpAdd8: {fn: foldCvt32Fto32U},
+	OpCvt64Fto32U - OpAdd8: {fn: foldCvt64Fto32U},
+	OpCvt64Uto32F - OpAdd8: {fn: foldCvt64Uto32F},
+	OpCvt64Uto64F - OpAdd8: {fn: foldCvt64Uto64F},
+	OpCvt32Fto64U - OpAdd8: {fn: foldCvt32Fto64U},
+	OpCvt64Fto64U - OpAdd8: {fn: foldCvt64Fto64U},
 
 	// OpSelect0 NOPE-NOPE-NOPE
 	// OpSelect1

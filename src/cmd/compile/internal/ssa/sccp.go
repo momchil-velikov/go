@@ -278,7 +278,7 @@ func (s *sccpState) visitExprs(b *Block) {
 
 	// If the block unconditionally transfers control to its successor,
 	// add the outgoing edge to the flow worklist.
-	if b.Kind == BlockPlain {
+	if b.Kind == BlockPlain || b.Kind == BlockFirst {
 		s.flowlist = append(s.flowlist, b.Succs[0])
 	}
 }

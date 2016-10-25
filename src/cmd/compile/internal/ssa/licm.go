@@ -2,10 +2,22 @@ package ssa
 
 import "fmt"
 
+type licmState struct {
+	fn *Func
+	ln *loopnest
+	// Map of invariant Values
+	// - not present: unknown
+	// - true : loop invariant
+	// - false: loop dependent
+	inv map[ID]bool
+}
+
 func licm(f *Func) {
 	ln := f.loopnest()
 	ln.assembleChildren()
 	ln.findExits()
+
+	s := licmState{fn: f, ln: ln}
 
 	// Pass statistics.
 	nmove := 0    // number of invariants moved
@@ -13,7 +25,7 @@ func licm(f *Func) {
 
 	for _, lp := range ln.loops {
 		if lp.outer == nil {
-			n, h := moveInvariants(ln, lp)
+			n, h := s.moveInvariants(lp)
 			nmove += n
 			noprehdr += h
 		}
@@ -25,24 +37,11 @@ func licm(f *Func) {
 	}
 }
 
-func isNestedLoop(inner, outer *loop) bool {
-	for inner != nil && inner != outer {
-		inner = inner.outer
-	}
-	return inner == outer
-}
-
-// Map of invariant Values
-// - not present: unknown
-// - true : loop invariant
-// - false: loop dependent
-type invmap map[ID]bool
-
-func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
+func (s *licmState) moveInvariants(lp *loop) (nmove, nohdr int) {
 	if !lp.isInner {
 		// First move invariants out of the inner loops.
 		for _, c := range lp.children {
-			n, h := moveInvariants(ln, c)
+			n, h := s.moveInvariants(c)
 			nmove += n
 			nohdr += h
 		}
@@ -58,7 +57,7 @@ func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 	// Find the pre-header. It's the only edge, coming from a block, not
 	// dominated by the loop header, i.e. not in the loop.
 	var pre *Block
-	sdom := ln.f.sdom()
+	sdom := s.fn.sdom()
 	for _, e := range lp.header.Preds {
 		if sdom.isAncestorEq(lp.header, e.b) {
 			continue
@@ -77,19 +76,19 @@ func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 	}
 
 	// Determine invariance of each definition in the loop.
-	inv := make(invmap)
-	for _, b := range ln.f.Blocks {
-		if ln.b2l[b.ID] != lp {
+	s.inv = make(map[ID]bool)
+	for _, b := range s.fn.Blocks {
+		if s.ln.b2l[b.ID] != lp {
 			continue
 		}
 		for _, v := range b.Values {
-			checkInvariant(ln, lp, v, inv)
+			s.checkInvariant(lp, v)
 		}
 	}
 
-	if ln.f.pass.debug > 1 {
+	if s.fn.pass.debug > 1 {
 		fmt.Printf("loop %s invariants:", lp.header)
-		for id, isInv := range inv {
+		for id, isInv := range s.inv {
 			if isInv {
 				fmt.Printf(" v%d", id)
 			}
@@ -98,15 +97,15 @@ func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 	}
 
 	// Move the invariants to the pre-header.
-	for _, b := range ln.f.Blocks {
-		if ln.b2l[b.ID] != lp {
+	for _, b := range s.fn.Blocks {
+		if s.ln.b2l[b.ID] != lp {
 			continue
 		}
 		n := 0
 		for _, v := range b.Values {
-			isInv, ok := inv[v.ID]
+			isInv, ok := s.inv[v.ID]
 			if !ok {
-				ln.f.Fatalf("unknown invariance status for %s", v)
+				s.fn.Fatalf("unknown invariance status for %s", v)
 			}
 			if !isInv {
 				b.Values[n] = v
@@ -119,6 +118,7 @@ func moveInvariants(ln *loopnest, lp *loop) (nmove, nohdr int) {
 		}
 		b.Values = b.Values[:n]
 	}
+	s.inv = nil
 	return
 }
 
@@ -335,17 +335,17 @@ func specExecSafe(v *Value) bool {
 	return false
 }
 
-func checkInvariant(ln *loopnest, lp *loop, v *Value, inv invmap) bool {
-	sdom := ln.f.sdom()
+func (s *licmState) checkInvariant(lp *loop, v *Value) bool {
+	sdom := s.fn.sdom()
 
 	// Check if we already know the invariance status.
-	if isInv, ok := inv[v.ID]; ok {
+	if isInv, ok := s.inv[v.ID]; ok {
 		return isInv
 	}
 
 	// If the Value is defined outside the loop it is invariant iff it
 	// dominates the loop header.
-	if ln.b2l[v.Block.ID] != lp {
+	if s.ln.b2l[v.Block.ID] != lp {
 		return sdom.isAncestor(v.Block, lp.header)
 	}
 
@@ -362,7 +362,7 @@ func checkInvariant(ln *loopnest, lp *loop, v *Value, inv invmap) bool {
 
 	// Figure out the invariant status of the arguments.
 	for _, a := range v.Args {
-		if !checkInvariant(ln, lp, a, inv) {
+		if !s.checkInvariant(lp, a) {
 			goto notInvariant
 		}
 	}
@@ -381,10 +381,10 @@ func checkInvariant(ln *loopnest, lp *loop, v *Value, inv invmap) bool {
 	}
 
 invariant:
-	inv[v.ID] = true
+	s.inv[v.ID] = true
 	return true
 
 notInvariant:
-	inv[v.ID] = false
+	s.inv[v.ID] = false
 	return false
 }
